@@ -1,7 +1,11 @@
 #### Script to create data for Bowden and Diehl R&P submission: Territorial Transfers and Trade #####
+# This uses the territorial transfer as the unit of analysis. A panel format might be a reasonable alternative.
 
 #load packages
 library(dplyr)
+library(readxl)
+library(haven)
+library(countrycode)
 
 # 1. Clean territorial change data ----
 
@@ -33,3 +37,259 @@ tc <- subset(tc, gainer>0)
 
 #create dyad numbers
 tc$dyad <- as.numeric(ifelse(tc$gainer > tc$loser, paste(tc$loser,tc$gainer,sep=""), paste(tc$gainer,tc$loser,sep="")))
+
+#2. Merge in Rivalry data ------
+riv <- read.csv("riv5.10all.csv")
+
+#extract start and end years
+riv$beginr <- as.numeric(substr(riv$beginr, 1, 4))
+riv$endr <- as.numeric(substr(riv$endr, 1, 4))
+
+#expand to yearly data
+all.years <- riv %>%
+  group_by(rivnumb) %>%
+  do(data.frame(year=seq(.$beginr,.$endr)))
+
+#merge
+riv <- merge(riv,all.years,all=T)
+riv <- subset(riv, select = -c(beginr,endr))
+
+#create dyad nums
+riv$dyad <- ifelse(riv$rivala > riv$rivalb, paste(riv$rivalb,riv$rivala,sep=""), paste(riv$rivala,riv$rivalb,sep=""))
+
+riv <- subset(riv, select = -c(rivala,rivalb))
+
+#merge into territorial change data
+tc <- merge(tc,riv,all.x=T,all.y=F,sort=F)
+
+rm(riv,all.years)
+
+## extend thru 2008 w/ peace scale data
+#create peace scale measures
+ps <- read.csv("cm550n4.csv",header = F)
+colnames(ps) <- c("dyad","year","ps")
+ps$ps[ps$ps<0] <- NA
+
+#standardize dyadnum
+ps$dyad <- as.character(ps$dyad)
+
+ps$dyad <- ifelse(nchar(ps$dyad)==4, paste("00",ps$dyad,sep=""), ps$dyad)
+ps$dyad <- ifelse(nchar(ps$dyad)==5,paste("0",ps$dyad,sep=""),ps$dyad)
+
+ps$ccode1 <- as.numeric(substr(ps$dyad,1,3))
+ps$ccode2 <- as.numeric(substr(ps$dyad,4,6))
+
+ps$dyad <- as.numeric(ifelse(ps$ccode1 > ps$ccode2, paste(ps$ccode2,ps$ccode1,sep=""), paste(ps$ccode1,ps$ccode2,sep="")))
+
+ps <- ps[,1:3]
+
+tc <- merge(tc,ps,all.x=T,all.y=F,sort=F)
+
+rm(ps)
+
+tc <- subset(tc, duplicated(tc[,1:26])==F)
+
+#create rivalry var
+tc$rivals <- ifelse(tc$rivtyp2=="RIVALRY" | tc$rivtyp2=="ISOLATED" | tc$ps>0.5, 1, 0)
+tc$rivals[is.na(tc$rivals)] <- 0
+
+# 3. Merge in contiguity data -----
+contig <- read.csv("contdir.csv")
+
+contig <- subset(contig,select=c(conttype,begin,end,dyad))
+
+contig$begin <- as.numeric(substr(contig$begin,1,4))
+contig$end <- as.numeric(substr(contig$end,1,4))
+
+#expand to dyad years
+all.years <- contig %>%
+  group_by(dyad, begin) %>%
+  do(data.frame(year=seq(.$begin,.$end)))
+
+contig <- merge(all.years,contig,all=T)
+
+contig <- subset(contig,select=c(dyad,year,conttype))
+
+tc <- merge(tc,contig,all.x=T,all.y=F,sort=F)
+
+rm(all.years,contig)
+
+#A few cases are duplicated due to contigutiy changing as a result of the transfer. I'll use the resulting contiguity.
+tc <- tc[with(tc, order(number)),]
+tc[235,29] <- 2
+tc[238,29] <- 2
+tc[435,29] <- 1
+tc <- tc[-c(236,239,436),]
+
+#assume missing values are zero
+tc$conttype[is.na(tc$conttype)] <- 0
+
+# 4. Merge in capability data (NMC 4.0) -----
+cinc <- read.csv("NMC_v4_0.csv")
+
+cinc <- subset(cinc,select=c(ccode,year,cinc))
+
+colnames(cinc)[1] <- "gainer"
+tc <- merge(tc,cinc,by=c("gainer","year"), all.x=T,all.y=F)
+colnames(tc)[30] <- "cap1"
+
+colnames(cinc)[1] <- "loser"
+tc <- merge(tc,cinc,by=c("loser","year"), all.x=T,all.y=F)
+colnames(tc)[31] <- "cap2"
+
+rm(cinc)
+
+tc$caprat <- (tc$cap1/tc$cap2)
+
+# 5. Merge in Polity IV --------
+polity <- read_excel("p4v2015.xls")
+
+polity <- subset(polity, select=c(ccode,year,polity2))
+
+colnames(polity)[1] <- "gainer"
+tc <- merge(tc,polity,all.x=T,all.y=F)
+colnames(tc)[33] <- "polity1"
+
+colnames(polity)[1] <- "loser"
+#note this means "polity2" is the losing side's polity score
+tc <- merge(tc,polity,all.x=T,all.y=F)
+
+rm(polity)
+
+tc$joint.dem <- ifelse(tc$polity1 >= 6 & tc$polity2 >= 6, 1, 0)
+
+# 6. Merge in Owsiak border settlement data ----
+settle <- read_dta("Replication - IBAD Full Settle Dyad-Year.dta")
+
+settle <- settle[,c(2:4,6:7)]
+
+settle$new.border.settle1 <- ifelse(settle$settle==1 & settle$obs < 2, 1, 0)
+settle$new.border.settle5 <- ifelse(settle$settle==1 & settle$obs < 6, 1, 0)
+
+settle$dyad <- ifelse(settle$ccode1 < settle$ccode2, paste(settle$ccode1, settle$ccode2, sep=""), paste(settle$ccode2, settle$ccode1, sep=""))
+
+settle <- subset(settle, select=c(dyad, year, settle, new.border.settle1, new.border.settle5))
+
+tc <- merge(tc, settle, all.x=T, all.y=F)
+
+rm(settle)
+
+#Note: there isn't a great deal of overlap w/ transfers (the CMPS article discusses this), so the settlement IV should be a separate data set with all border settlements.
+
+# 7. Merge in ARCHIGOS -------
+arch <- read_dta("Archigos_v.2.9_tv-Public.dta")
+
+arch$startdate <- as.Date(arch$startdate,"%d/%m/%Y")
+arch$sty <- as.numeric(format(arch$startdate,"%Y"))
+
+arch$tenure <- arch$year - arch$sty
+
+arch <- subset(arch,select=c(ccode,year,tenure))
+
+arch <- arch %>%
+  group_by(ccode,year) %>%
+  summarize(tenure=min(tenure))
+
+colnames(arch) <- c("loser","year","tenure.loser")
+tc <- merge(tc,arch,all.x=T,all.y=F)
+
+colnames(arch) <- c("gainer","year","tenure.gainer")
+tc <- merge(tc,arch,all.x=T,all.y=F)
+rm(arch)
+
+# 8. Count previous transfers within dyad----
+
+#sort data
+tc <- tc[order(tc$dyad,tc$year),]
+
+tc <- tc %>%
+  group_by(dyad,year) %>%
+  mutate(simul.transfers=n_distinct(entity))
+
+tc$prev.transfers <- with(tc, ave(dyad, dyad, FUN=seq_along)) -1
+
+tc <- tc %>%
+  group_by(dyad,year) %>%
+  mutate(min.transfers=min(prev.transfers))
+
+tc$prev.transfers <- ifelse(tc$simul.transfers>1,tc$min.transfers,tc$prev.transfers)
+
+tc <- subset(tc,select=-min.transfers)
+
+# 9. Merge in trade data -----
+trade <- read.csv("dyadic_trade_3.0.csv")
+
+trade$dyad <- as.numeric(paste(trade$ccode1,trade$ccode2,sep=""))
+
+trade <- subset(trade,select=c(year,dyad,flow1,flow2))
+
+# Note: ccodes always listed low to high, so flow1 is always flows from ccode2 to ccode1
+
+trade$flow1[trade$flow1 < 0] <- NA
+trade$flow2[trade$flow2 < 0] <- NA
+
+#lag the trade measure
+trade <- trade %>% 
+  group_by(dyad) %>% 
+  mutate(flow1.lag=lag(flow1,1),flow2.lag=lag(flow2,1),flow1.lag2=lag(flow1,2),flow2.lag2=lag(flow2,2),flow1.lag3=lag(flow1,3),flow2.lag3=lag(flow2,3),flow1.lag4=lag(flow1,4),flow2.lag4=lag(flow2,4),flow1.lag5=lag(flow1,5),flow2.lag5=lag(flow2,5))
+
+#create leads
+trade <- trade %>% 
+  group_by(dyad) %>% 
+  mutate(flow1.lead1=lead(flow1,1),flow2.lead1=lead(flow2,1),flow1.lead2=lead(flow1,2),flow2.lead2=lead(flow2,2),flow1.lead3=lead(flow1,3),flow2.lead3=lead(flow2,3),flow1.lead4=lead(flow1,4),flow2.lead4=lead(flow2,4),flow1.lead5=lead(flow1,5),flow2.lead5=lead(flow2,5))
+
+tc <- merge(tc,trade,all.x=T,all.y=F)
+rm(trade)
+
+## create aggregated trade measures
+
+# DVs
+tc$gainer_loser_lead3 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=T))
+
+tc$loser_gainer_lead3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=T))
+
+tc$gainer_loser_lead5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3","flow1.lead4","flow1.lead5")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3","flow2.lead4","flow2.lead5")], na.rm=T))
+
+tc$loser_gainer_lead5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=T))
+
+# IVs
+tc$gainer_loser_lag3 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=T))
+
+tc$loser_gainer_lag3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=T))
+
+tc$gainer_loser_lag5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3","flow1.lag4","flow1.lag5")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3","flow2.lag4","flow2.lag5")], na.rm=T))
+
+tc$loser_gainer_lag5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=T))
+
+tc <- subset(tc, select=-c(flow1.lag2,flow1.lag3,flow1.lag4,flow1.lag5,flow2.lag2,flow2.lag3,flow2.lag4,flow2.lag5,flow1.lead2,flow1.lead3,flow1.lead4,flow1.lead5,flow2.lead2,flow2.lead3,flow2.lead4,flow2.lead5))
+
+# 10. Merge in distance between capitals ----
+cap <- read.csv("capdist.csv") #from K. Gleditsch
+
+cap$dyad <- as.numeric(ifelse(cap$numa < cap$numb, paste(cap$numa,cap$numb,sep=""), paste(cap$numb,cap$numa,sep="")))
+
+cap <- subset(cap,select=c(dyad,kmdist))
+
+cap <- subset(cap,duplicated(cap)==F)
+
+tc <- merge(tc,cap,all.x=T,all.y=F)
+
+rm(cap)
+
+# 11. Merge in GDP data ----
+pwt <- read.csv("pwt_gdp.csv")
+
+pwt$RegionCode <- countrycode(pwt$RegionCode,"iso3c","cown")
+
+pwt <- subset(pwt,select=c(RegionCode,YearCode,AggValue))
+
+colnames(pwt) <- c("gainer","year","gainer.gdp")
+tc <- merge(tc,pwt,all.x=T,all.y=F)
+
+colnames(pwt) <- c("loser","year","loser.gdp")
+tc <- merge(tc,pwt,all.x=T,all.y=F)
+
+rm(pwt)
+
+# 12. Write data ----
+write.csv(tc, "transfer_as_unit.csv",row.names = F)
