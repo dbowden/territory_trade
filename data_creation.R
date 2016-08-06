@@ -28,5 +28,8 @@ tc[407,20] <- 0 #471 from 200 in 1961
 tc[416,20] <- 0 #820 from 200 in 1963
 tc[417,20] <- 0 #820 from 200 in 1963
 
+#remove 1 case where gainer is non-state (discovered this after I set the hard codings)
+tc <- subset(tc, gainer>0)
+
 #create dyad numbers
 tc$dyad <- as.numeric(ifelse(tc$gainer > tc$loser, paste(tc$loser,tc$gainer,sep=""), paste(tc$gainer,tc$loser,sep="")))
