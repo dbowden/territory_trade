@@ -6,6 +6,7 @@ library(dplyr)
 library(readxl)
 library(haven)
 library(countrycode)
+library(tidyr)
 
 # 1. Clean territorial change data ----
 
@@ -277,19 +278,47 @@ tc <- merge(tc,cap,all.x=T,all.y=F)
 rm(cap)
 
 # 11. Merge in GDP data ----
+
+###Pre 1950: maddison 2013 version
+maddison <- read_excel("mpd_2013-01.xlsx",skip = 2)
+
+colnames(maddison)[1] <- "year"
+
+maddison <- maddison[,1:181]
+
+#convert to long format
+maddison <- gather(maddison, country, gdp.loser, 2:181)
+
+#remove obs outside time period
+maddison <- subset(maddison, year>=1816 & year<1950)
+
+#create cow codes
+maddison$loser <- countrycode(maddison$country, "country.name", "cown")
+
+#fix a few ccodes
+maddison$loser[maddison$country=="England/GB/UK"] <- 200
+maddison$loser[maddison$country=="N. Zealand "] <- 920
+maddison$loser[maddison$country=="Czecho-slovakia"] <- 315
+maddison$loser[maddison$country=="Serbia"] <- 340
+maddison$loser[maddison$country=="Turk-menistan "] <- 701
+maddison$loser[maddison$country=="Haïti"] <- 41
+
+
+#1950 - 2008: pwt 9.0 real gdp (RGDP)
+
 pwt <- read.csv("pwt_gdp.csv")
-
-pwt$RegionCode <- countrycode(pwt$RegionCode,"iso3c","cown")
-
-pwt <- subset(pwt,select=c(RegionCode,YearCode,AggValue))
-
-colnames(pwt) <- c("gainer","year","gainer.gdp")
-tc <- merge(tc,pwt,all.x=T,all.y=F)
-
-colnames(pwt) <- c("loser","year","loser.gdp")
-tc <- merge(tc,pwt,all.x=T,all.y=F)
-
-rm(pwt)
+# 
+# pwt$RegionCode <- countrycode(pwt$RegionCode,"iso3c","cown")
+# 
+# pwt <- subset(pwt,select=c(RegionCode,YearCode,AggValue))
+# 
+# colnames(pwt) <- c("gainer","year","gainer.gdp")
+# tc <- merge(tc,pwt,all.x=T,all.y=F)
+# 
+# colnames(pwt) <- c("loser","year","loser.gdp")
+# tc <- merge(tc,pwt,all.x=T,all.y=F)
+# 
+# rm(pwt)
 
 # 12. Write data ----
 write.csv(tc, "transfer_as_unit.csv",row.names = F)
