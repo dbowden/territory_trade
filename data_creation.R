@@ -128,36 +128,35 @@ tc$conttype[is.na(tc$conttype)] <- 0
 # 4. Merge in capability data (NMC 4.0) -----
 cinc <- read.csv("NMC_v4_0.csv")
 
-cinc <- subset(cinc,select=c(ccode,year,cinc))
+cinc <- subset(cinc,select=c(ccode,year,cinc,tpop))
 
-colnames(cinc)[1] <- "gainer"
-tc <- merge(tc,cinc,by=c("gainer","year"), all.x=T,all.y=F)
-colnames(tc)[30] <- "cap1"
+#convert pop from thousands to raw
+cinc$tpop <- cinc$tpop * 1000
 
-colnames(cinc)[1] <- "loser"
-tc <- merge(tc,cinc,by=c("loser","year"), all.x=T,all.y=F)
-colnames(tc)[31] <- "cap2"
+colnames(cinc) <- c("gainer","year","cap_gainer","pop_gainer")
+tc <- merge(tc,cinc, all.x=T,all.y=F)
+
+colnames(cinc) <- c("loser","year","cap_loser","pop_loser")
+tc <- merge(tc, cinc, all.x=T,all.y=F)
+
+tc$caprat <- (tc$cap_loser/tc$cap_gainer)
 
 rm(cinc)
-
-tc$caprat <- (tc$cap1/tc$cap2)
 
 # 5. Merge in Polity IV --------
 polity <- read_excel("p4v2015.xls")
 
 polity <- subset(polity, select=c(ccode,year,polity2))
 
-colnames(polity)[1] <- "gainer"
+colnames(polity) <- c("gainer","year","polity.gainer")
 tc <- merge(tc,polity,all.x=T,all.y=F)
-colnames(tc)[33] <- "polity1"
 
-colnames(polity)[1] <- "loser"
-#note this means "polity2" is the losing side's polity score
+colnames(polity) <- c("loser","year","polity.loser")
 tc <- merge(tc,polity,all.x=T,all.y=F)
 
 rm(polity)
 
-tc$joint.dem <- ifelse(tc$polity1 >= 6 & tc$polity2 >= 6, 1, 0)
+tc$joint.dem <- ifelse(tc$polity.gainer >= 6 & tc$polity.loser >= 6, 1, 0)
 
 # 6. Merge in Owsiak border settlement data ----
 settle <- read_dta("Replication - IBAD Full Settle Dyad-Year.dta")
@@ -232,7 +231,7 @@ trade$flow2[trade$flow2 < 0] <- NA
 #lag the trade measure
 trade <- trade %>% 
   group_by(dyad) %>% 
-  mutate(flow1.lag=lag(flow1,1),flow2.lag=lag(flow2,1),flow1.lag2=lag(flow1,2),flow2.lag2=lag(flow2,2),flow1.lag3=lag(flow1,3),flow2.lag3=lag(flow2,3),flow1.lag4=lag(flow1,4),flow2.lag4=lag(flow2,4),flow1.lag5=lag(flow1,5),flow2.lag5=lag(flow2,5))
+  mutate(flow1.lag1=lag(flow1,1),flow2.lag1=lag(flow2,1),flow1.lag2=lag(flow1,2),flow2.lag2=lag(flow2,2),flow1.lag3=lag(flow1,3),flow2.lag3=lag(flow2,3),flow1.lag4=lag(flow1,4),flow2.lag4=lag(flow2,4),flow1.lag5=lag(flow1,5),flow2.lag5=lag(flow2,5))
 
 #create leads
 trade <- trade %>% 
@@ -251,7 +250,7 @@ tc$loser_gainer_lead3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead
 
 tc$gainer_loser_lead5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3","flow1.lead4","flow1.lead5")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3","flow2.lead4","flow2.lead5")], na.rm=T))
 
-tc$loser_gainer_lead5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=T))
+tc$loser_gainer_lead5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3","flow1.lead4","flow1.lead5")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3","flow2.lead4","flow2.lead5")], na.rm=T))
 
 # IVs
 tc$gainer_loser_lag3 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=T))
@@ -260,7 +259,7 @@ tc$loser_gainer_lag3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1"
 
 tc$gainer_loser_lag5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3","flow1.lag4","flow1.lag5")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3","flow2.lag4","flow2.lag5")], na.rm=T))
 
-tc$loser_gainer_lag5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=T))
+tc$loser_gainer_lag5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3","flow1.lag4","flow1.lag5")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3","flow2.lag4","flow2.lag5")], na.rm=T))
 
 tc <- subset(tc, select=-c(flow1.lag2,flow1.lag3,flow1.lag4,flow1.lag5,flow2.lag2,flow2.lag3,flow2.lag4,flow2.lag5,flow1.lead2,flow1.lead3,flow1.lead4,flow1.lead5,flow2.lead2,flow2.lead3,flow2.lead4,flow2.lead5))
 
@@ -303,22 +302,42 @@ maddison$loser[maddison$country=="Serbia"] <- 340
 maddison$loser[maddison$country=="Turk-menistan "] <- 701
 maddison$loser[maddison$country=="Haïti"] <- 41
 
+maddison <- subset(maddison, is.na(loser)==F)
 
-#1950 - 2008: pwt 9.0 real gdp (RGDP)
+#a couple things are duplicated
+maddison <- subset(maddison, country!="Russia" & country!="F. Yugoslavia ")
 
-pwt <- read.csv("pwt_gdp.csv")
-# 
-# pwt$RegionCode <- countrycode(pwt$RegionCode,"iso3c","cown")
-# 
-# pwt <- subset(pwt,select=c(RegionCode,YearCode,AggValue))
-# 
-# colnames(pwt) <- c("gainer","year","gainer.gdp")
-# tc <- merge(tc,pwt,all.x=T,all.y=F)
-# 
-# colnames(pwt) <- c("loser","year","loser.gdp")
-# tc <- merge(tc,pwt,all.x=T,all.y=F)
-# 
-# rm(pwt)
+maddison <- subset(maddison, select=c(year,gdp.loser,loser))
+
+###Post-1950: PWT 9.0 (Real GDP at constant national prices in millions of 2011 USD)
+pwt <- read.csv("pwt9.csv")
+
+pwt <- pwt[,2:4]
+
+#convert to cow code
+pwt$loser <- countrycode(pwt$RegionCode, "iso3c", "cown")
+
+pwt <- pwt[,2:4]
+
+pwt <- subset(pwt, is.na(loser)==F)
+
+colnames(pwt) <- c("year","gdp.loser","loser")
+
+gdp <- rbind(maddison,pwt)
+
+tc <- merge(tc, gdp, all.x=T, all.y=F)
+
+colnames(gdp) <- c("year","gdp.gainer","gainer")
+tc <- merge(tc, gdp, all.x=T, all.y=F)
+
+#convert maddison to raw gdp from per capita
+tc <- tc %>% 
+  mutate(gdp.loser=ifelse(year < 1950, gdp.loser * pop_loser / 1000000, gdp.loser))
+
+tc <- tc %>% 
+  mutate(gdp.gainer=ifelse(year < 1950, gdp.gainer * pop_gainer / 1000000, gdp.gainer))
+
+rm(gdp,maddison,pwt)
 
 # 12. Write data ----
 write.csv(tc, "transfer_as_unit.csv",row.names = F)
