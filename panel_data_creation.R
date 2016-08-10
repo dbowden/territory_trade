@@ -6,6 +6,50 @@ library(tidyr)
 library(readr)
 library(haven)
 
+# 0. Clean territorial change data and use to set scope ----
+
+#load COW territorial transfer data (with our extension through 2008)
+tc <- read_csv("tc2008.csv", na = c(".", -9))
+
+# limit to state-to-state transfers
+tc <- filter(tc, indep == 0) #remove territories that became independent
+tc <- filter(tc, exit == 0) #remove territories that were absorbed after state deaths
+tc <- filter(tc, loser > 0) #some cases have NA for loser, and the Leage of Nations (0) is loser in one case
+
+##extract legal agreements from "procedur" variable
+
+#they are all included under the "cession" category
+tc$agreement <- ifelse(tc$procedur == 3, 1, 0) # remove plebiscites
+
+#but there are also some plebiscites that need to be removed to islate agreements. These are determined by COW code sheets and Beigbeder (1994). 
+tc[289,20] <- 0 #390 from 255 in 1920
+tc[295,20] <- 0 #310 from 305 in 1921
+tc[277,20] <- 0 #305 from 345 in 1920
+tc[377,20] <- 0 #750 from 220 in 1950
+tc[93,20] <- 0 #325 from 327 in 1870
+tc[407,20] <- 0 #471 from 200 in 1961
+tc[416,20] <- 0 #820 from 200 in 1963
+tc[417,20] <- 0 #820 from 200 in 1963
+
+#remove 1 case where gainer is non-state (discovered this after I set the hard codings)
+tc <- filter(tc, gainer>0)
+
+#create dyad numbers
+tc$dyad <- as.numeric(ifelse(tc$gainer > tc$loser, paste(tc$loser,tc$gainer,sep=""), paste(tc$gainer,tc$loser,sep="")))
+
+## create frame of dyad years within 10 (or 20?) years of transfer
+frame <- select(tc, dyad, year)
+
+frame$end <- frame$year + 10
+
+frame$id <- seq(1:length(frame$dyad))
+
+frame <- frame %>%
+  group_by(id) %>% 
+  do(data.frame(year=seq(.$year, .$end), dyad=.$dyad))
+
+frame <- frame[,2:3]
+
 # 1. (D) Load trade data and create summaries ----
 trade <- read_csv("dyadic_trade_3.0.csv", na="-9")
 
@@ -16,6 +60,15 @@ trade <- select(trade, year, dyad, flow1, flow2, ccode1, ccode2)
 # Note: ccodes always listed low to high, so flow1 is always flows from ccode2 to ccode1
 
 trade <- filter(trade, is.na(flow1)==F & is.na(flow2)==F)
+
+#create lagged trade vars
+trade <- trade %>% 
+  group_by(dyad) %>%
+  mutate(flow1.lag1=lag(flow1),flow2.lag1=lag(flow2),flow1.lag2=lag(flow1,2),flow2.lag2=lag(flow2,2))
+
+trade <- left_join(frame, trade)
+
+rm(frame)
 
 # 2. (M) Merge in capability data (NMC 4.0) -----
 cinc <- read_csv("NMC_v4_0.csv")
@@ -109,36 +162,7 @@ trade <- left_join(trade,cap)
 
 rm(cap)
 
-# 5. (D) Clean territorial change data ----
-
-#load COW territorial transfer data (with our extension through 2008)
-tc <- read_csv("tc2008.csv", na = c(".", -9))
-
-# limit to state-to-state transfers
-tc <- filter(tc, indep == 0) #remove territories that became independent
-tc <- filter(tc, exit == 0) #remove territories that were absorbed after state deaths
-tc <- filter(tc, loser > 0) #some cases have NA for loser, and the Leage of Nations (0) is loser in one case
-
-##extract legal agreements from "procedur" variable
-
-#they are all included under the "cession" category
-tc$agreement <- ifelse(tc$procedur == 3, 1, 0) # remove plebiscites
-
-#but there are also some plebiscites that need to be removed to islate agreements. These are determined by COW code sheets and Beigbeder (1994). 
-tc[289,20] <- 0 #390 from 255 in 1920
-tc[295,20] <- 0 #310 from 305 in 1921
-tc[277,20] <- 0 #305 from 345 in 1920
-tc[377,20] <- 0 #750 from 220 in 1950
-tc[93,20] <- 0 #325 from 327 in 1870
-tc[407,20] <- 0 #471 from 200 in 1961
-tc[416,20] <- 0 #820 from 200 in 1963
-tc[417,20] <- 0 #820 from 200 in 1963
-
-#remove 1 case where gainer is non-state (discovered this after I set the hard codings)
-tc <- filter(tc, gainer>0)
-
-#create dyad numbers
-tc$dyad <- as.numeric(ifelse(tc$gainer > tc$loser, paste(tc$loser,tc$gainer,sep=""), paste(tc$gainer,tc$loser,sep="")))
+# 5. (D) Merge in territorial change data ----
 
 trade <- left_join(trade, tc)
 

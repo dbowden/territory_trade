@@ -244,22 +244,29 @@ rm(trade)
 ## create aggregated trade measures
 
 # DVs
-tc$gainer_loser_lead3 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=T))
+tc$gainer_loser_lead3 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=F), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=F))
 
-tc$loser_gainer_lead3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=T))
+tc$loser_gainer_lead3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3")], na.rm=F), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3")], na.rm=F))
 
-tc$gainer_loser_lead5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3","flow1.lead4","flow1.lead5")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3","flow2.lead4","flow2.lead5")], na.rm=T))
+tc$gainer_loser_lead5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3","flow1.lead4","flow1.lead5")], na.rm=F), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3","flow2.lead4","flow2.lead5")], na.rm=F))
 
-tc$loser_gainer_lead5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3","flow1.lead4","flow1.lead5")], na.rm=T), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3","flow2.lead4","flow2.lead5")], na.rm=T))
+tc$loser_gainer_lead5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lead1","flow1.lead2","flow1.lead3","flow1.lead4","flow1.lead5")], na.rm=F), rowMeans(tc[,c("flow2.lead1","flow2.lead2","flow2.lead3","flow2.lead4","flow2.lead5")], na.rm=F))
 
 # IVs
-tc$gainer_loser_lag3 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=T))
+tc$gainer_loser_lag3 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=F), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=F))
 
-tc$loser_gainer_lag3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=T))
+tc$loser_gainer_lag3 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3")], na.rm=F), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3")], na.rm=F))
 
-tc$gainer_loser_lag5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3","flow1.lag4","flow1.lag5")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3","flow2.lag4","flow2.lag5")], na.rm=T))
+tc$gainer_loser_lag5 <- ifelse(tc$loser < tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3","flow1.lag4","flow1.lag5")], na.rm=F), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3","flow2.lag4","flow2.lag5")], na.rm=F))
 
-tc$loser_gainer_lag5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3","flow1.lag4","flow1.lag5")], na.rm=T), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3","flow2.lag4","flow2.lag5")], na.rm=T))
+tc$loser_gainer_lag5 <- ifelse(tc$loser > tc$gainer, rowMeans(tc[,c("flow1.lag1","flow1.lag2","flow1.lag3","flow1.lag4","flow1.lag5")], na.rm=F), rowMeans(tc[,c("flow2.lag1","flow2.lag2","flow2.lag3","flow2.lag4","flow2.lag5")], na.rm=F))
+
+#create dyadic measures
+tc$agg_lead3 <- tc$loser_gainer_lead3 + tc$gainer_loser_lead3
+tc$agg_lead5 <- tc$loser_gainer_lead5 + tc$gainer_loser_lead5
+tc$agg_lag3 <- tc$loser_gainer_lag3 + tc$gainer_loser_lag3
+tc$agg_lag5 <- tc$loser_gainer_lag5 + tc$loser_gainer_lag5
+tc$agg_gdp <- tc$gdp.loser + tc$gdp.gainer
 
 tc <- subset(tc, select=-c(flow1.lag2,flow1.lag3,flow1.lag4,flow1.lag5,flow2.lag2,flow2.lag3,flow2.lag4,flow2.lag5,flow1.lead2,flow1.lead3,flow1.lead4,flow1.lead5,flow2.lead2,flow2.lead3,flow2.lead4,flow2.lead5))
 
