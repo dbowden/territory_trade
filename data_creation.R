@@ -125,6 +125,32 @@ tc <- tc[-c(236,239,436),]
 #assume missing values are zero
 tc$conttype[is.na(tc$conttype)] <- 0
 
+## and add colonial contiguity
+colcont <- read.csv("Colonial Contiguity v3.0.csv")
+
+colcont$dyad <- as.numeric(paste(colcont$CCode1,colcont$CCode2,sep=""))
+
+colcont <- select(colcont, dyad, BegYear, EndYear, CType)
+
+colcont$id <- seq(1:length(colcont$dyad))
+
+all.years <- colcont %>% 
+  group_by(id) %>% 
+  do(data.frame(year=seq(.$BegYear,.$EndYear)))
+
+colcont <- right_join(colcont, all.years)
+
+#create min when there are multiple connections in a year
+colcont <- colcont %>% 
+  group_by(dyad, year) %>% 
+  summarize(col.conttype=min(CType))
+
+tc <- left_join(tc, colcont)
+
+tc$col.conttype[is.na(tc$col.conttype)] <- 0
+
+rm(colcont,all.years)
+
 # 4. Merge in capability data (NMC 4.0) -----
 cinc <- read.csv("NMC_v4_0.csv")
 
@@ -266,7 +292,6 @@ tc$agg_lead3 <- tc$loser_gainer_lead3 + tc$gainer_loser_lead3
 tc$agg_lead5 <- tc$loser_gainer_lead5 + tc$gainer_loser_lead5
 tc$agg_lag3 <- tc$loser_gainer_lag3 + tc$gainer_loser_lag3
 tc$agg_lag5 <- tc$loser_gainer_lag5 + tc$loser_gainer_lag5
-tc$agg_gdp <- tc$gdp.loser + tc$gdp.gainer
 
 tc <- subset(tc, select=-c(flow1.lag2,flow1.lag3,flow1.lag4,flow1.lag5,flow2.lag2,flow2.lag3,flow2.lag4,flow2.lag5,flow1.lead2,flow1.lead3,flow1.lead4,flow1.lead5,flow2.lead2,flow2.lead3,flow2.lead4,flow2.lead5))
 
@@ -345,6 +370,8 @@ tc <- tc %>%
   mutate(gdp.gainer=ifelse(year < 1950, gdp.gainer * pop_gainer / 1000000, gdp.gainer))
 
 rm(gdp,maddison,pwt)
+
+tc$agg_gdp <- tc$gdp.loser + tc$gdp.gainer
 
 # 12. Write data ----
 write.csv(tc, "transfer_as_unit.csv",row.names = F)
