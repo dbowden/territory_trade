@@ -5,6 +5,7 @@ library(dplyr)
 library(tidyr)
 library(readr)
 library(haven)
+library(zoo)
 
 # 1. (D) Load trade data and create summaries ----
 trade <- read_csv("dyadic_trade_3.0.csv", na="-9")
@@ -360,12 +361,27 @@ trade$conflict5[is.na(trade$conflict5)] <- 0
 #create trade vars
 trade$tot.flow <- trade$flow1 + trade$flow2
 
+##rolling mean
+
+#remove cases with less than 3 consecutive years
+trade <- trade %>% 
+  group_by(dyad) %>% 
+  mutate(cases=length(year))
+
+trade <- filter(trade, cases>=3)
+
+#rolling mean
+trade <- trade %>% 
+  group_by(dyad) %>% 
+  mutate(tot.flow.mean=rollmean(tot.flow, 3, fill=NA))
+
 trade$tot.gdp <- trade$gdp1 + trade$gdp2
 
 trade$postww2 <- ifelse(trade$year > 1945, 1, 0)
 
 # 12. Write data ----
-trade <- filter(trade, is.na(flow1)==F & is.na(flow2)==F & is.na(gdp1)==F & is.na(gdp2)==F & is.na(kmdist)==F)
+trade <- filter(trade, is.na(tot.flow.mean)==F & is.na(gdp1)==F & is.na(gdp2)==F & is.na(kmdist)==F)
+
 
 #trade <- filter(trade, conttype!=0 | col.conttype!=0)
 
