@@ -57,3 +57,10 @@ screenreg(list(l13))
 l14 <- lm(log(post3+.01) ~ log(agg.gdp) + log(kmdist) + agreement + rivals, data=tc)
 
 screenreg(list(l14))
+
+# Difference
+
+tc$diff3 <- tc$agg_lead3 - tc$agg_lag3
+
+l15 <- lm(diff3 ~ agreement + log(agg_gdp) + log(kmdist), data=tc)
+summary(l15)

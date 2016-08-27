@@ -16,7 +16,7 @@ trade <- select(trade, year, dyad, flow1, flow2, ccode1, ccode2)
 
 # Note: ccodes always listed low to high, so flow1 is always flows from ccode2 to ccode1
 
-trade <- filter(trade, is.na(flow1)==F & is.na(flow2)==F)
+trade <- filter(trade, is.na(flow1)==F & is.na(flow2)==F & is.na(dyad)==F)
 
 # 2. (M) Merge in capability data (NMC 4.0) -----
 cinc <- read_csv("NMC_v4_0.csv")
@@ -124,6 +124,27 @@ trade <- trade %>%
   mutate(gdp2=ifelse(year > 2002, gdp2 / 1000000, gdp2))
 
 rm(gdp,maddison,pwt,wb)
+
+# 3a. Use Gleditsch data to fill in some NAs ----
+gled <- read.table("exptradegdpv4/expdata.asc", header=T, na.strings = ".")
+
+#adjust for inflation (data in per capita 1996 dollars)
+gled$rgdpca <- gled$rgdpca * gled$popa * 1.433
+gled$rgdpcb <- gled$rgdpcb * gled$popb * 1.433
+
+gled <- select(gled, numa, numb, year, rgdpca, rgdpcb)
+
+colnames(gled) <- c("ccode1", "ccode2", "year", "gdp1.alt", "gdp2.alt")
+
+trade <- left_join(trade, gled)
+
+
+trade$gdp1 <- ifelse(is.na(trade$gdp1) == T, trade$gdp1.alt, trade$gdp1)
+trade$gdp2 <- ifelse(is.na(trade$gdp2) == T, trade$gdp2.alt, trade$gdp2)
+
+trade <- select(trade, -gdp1.alt, -gdp2.alt)
+
+rm(gled)
 
 # 4. (D) Merge in distance between capitals ----
 cap <- read_csv("capdist.csv") #from K. Gleditsch
@@ -315,10 +336,11 @@ settle <- read_dta("Replication - IBAD Full Settle Dyad-Year.dta")
 settle <- settle[,c(2:4,6:7)]
 
 settle$new.border.settle <- ifelse(settle$settle==1 & settle$obs==1, 1, 0)
+settle$new.border.settle5 <- ifelse(settle$settle==1 & settle$obs<6, 1, 0)
 
 settle$dyad <- as.numeric(ifelse(settle$ccode1 < settle$ccode2, paste(settle$ccode1, settle$ccode2, sep=""), paste(settle$ccode2, settle$ccode1, sep="")))
 
-settle <- select(settle, dyad, year, settle, new.border.settle)
+settle <- select(settle, dyad, year, settle, new.border.settle, new.border.settle5)
 
 trade <- left_join(trade, settle)
 
@@ -368,21 +390,50 @@ trade <- trade %>%
   group_by(dyad) %>% 
   mutate(cases=length(year))
 
-trade <- filter(trade, cases>=3)
+trade <- filter(trade, cases>=5)
 
 #rolling mean
 trade <- trade %>% 
   group_by(dyad) %>% 
-  mutate(tot.flow.mean=rollmean(tot.flow, 3, fill=NA))
+  mutate(tot.flow.mean3=rollmean(tot.flow, 3, fill=NA),tot.flow.mean5=rollmean(tot.flow, 5, fill=NA))
 
 trade$tot.gdp <- trade$gdp1 + trade$gdp2
 
+trade$tot.pop <- trade$pop1 + trade$pop2
+
 trade$postww2 <- ifelse(trade$year > 1945, 1, 0)
 
-# 12. Write data ----
-trade <- filter(trade, is.na(tot.flow.mean)==F & is.na(gdp1)==F & is.na(gdp2)==F & is.na(kmdist)==F)
+# 12. Add PTA data ----
+pta <- read_dta("TGR_AER2007_merged/TGR2007.dta")
 
+pta$cty1name[pta$cty1name=="KYRQYZ REPUBLIC"] <- "Kyrgyzstan"
+pta$cty2name[pta$cty2name=="KYRQYZ REPUBLIC"] <- "Kyrgyzstan"
+pta$cty1name[pta$cty1name=="MOLDVA"] <- "Moldova"
+pta$cty2name[pta$cty2name=="MOLDVA"] <- "Moldova"
 
-#trade <- filter(trade, conttype!=0 | col.conttype!=0)
+pta$ccode1 <- countrycode(pta$cty1name, "country.name", "cown")
+pta$ccode2 <- countrycode(pta$cty2name, "country.name", "cown")
+
+pta <- select(pta, year, ccode1, ccode2, regional, gattmbr1, gattmbr2, comlang, comcol, colony, curcol, custrict)
+
+colnames(pta) <- c("year","ccode1", "ccode2", "fta", "gatt1", "gatt2", "comlang", "comcol", "colony", "curcol", "currencyu")
+
+trade <- left_join(trade, pta)
+
+rm(pta)
+
+#fill the colonial history and common language backwards, as they should be constant
+trade <- trade %>%
+  group_by(dyad) %>% 
+  mutate(comlang = na.locf(comlang, fromLast = T, na.rm = F), comcol = na.locf(comcol, fromLast = T, na.rm = F), colony = na.locf(colony, fromLast = T, na.rm = F))
+
+trade <- trade %>%
+  group_by(dyad) %>% 
+  mutate(comlang = na.locf(comlang, na.rm = F), comcol = na.locf(comcol, na.rm = F), colony = na.locf(colony, na.rm = F))
+
+trade$joint.gatt.any <- ifelse(trade$gatt1 != "out" & trade$gatt2 != "out", 1, 0)
+trade$joint.gatt.formal <- ifelse((trade$gatt1 == "wto" | trade$gatt1 == "art33" | trade$gatt1 == "art26:5") & (trade$gatt2 == "wto" | trade$gatt2 == "art33" | trade$gatt2 == "art26:5"), 1, 0)
+
+# 13. Write data ----
 
 write_csv(trade, "full_panel.csv")

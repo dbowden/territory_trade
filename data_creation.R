@@ -404,9 +404,67 @@ tc <- tc %>%
 tc <- tc %>% 
   mutate(gdp.gainer=ifelse(year > 2002, gdp.gainer / 1000000, gdp.gainer))
 
-rm(gdp,maddison,pwt)
+rm(gdp,maddison,pwt,wb)
+
+tc$agg_pop <- tc$pop_loser + tc$pop_gainer
+
+# 12. Use Gleditsch data to fill in some NAs ----
+gled <- read.table("exptradegdpv4/expdata.asc", header=T, na.strings = ".")
+
+gled$dyad <- as.numeric(paste(gled$numa, gled$numb, sep = ""))
+
+#adjust for inflation (data in per capita 1996 dollars)
+gled$rgdpca <- gled$rgdpca * gled$popa * 1.433
+gled$rgdpcb <- gled$rgdpcb * gled$popb * 1.433
+
+gled <- select(gled, dyad, year, rgdpca, rgdpcb)
+
+tc <- left_join(tc, gled)
+
+tc$gdp.loser.alt <- ifelse(tc$loser < tc$gainer, tc$rgdpca, tc$rgdpcb)
+tc$gdp.gainer.alt <- ifelse(tc$loser < tc$gainer, tc$rgdpcb, tc$rgdpca)
+
+tc$gdp.loser <- ifelse(is.na(tc$gdp.loser) == T, tc$gdp.loser.alt, tc$gdp.loser)
+tc$gdp.gainer <- ifelse(is.na(tc$gdp.gainer) == T, tc$gdp.gainer.alt, tc$gdp.gainer)
 
 tc$agg_gdp <- tc$gdp.loser + tc$gdp.gainer
 
-# 12. Write data ----
-write.csv(tc, "transfer_as_unit.csv",row.names = F)
+tc <- select(tc, -rgdpca, -rgdpcb, -gdp.gainer.alt, -gdp.loser.alt)
+
+rm(gled)
+
+# 13. Add PTA data ----
+pta <- read_dta("TGR_AER2007_merged/TGR2007.dta")
+
+pta$cty1name[pta$cty1name=="KYRQYZ REPUBLIC"] <- "Kyrgyzstan"
+pta$cty2name[pta$cty2name=="KYRQYZ REPUBLIC"] <- "Kyrgyzstan"
+pta$cty1name[pta$cty1name=="MOLDVA"] <- "Moldova"
+pta$cty2name[pta$cty2name=="MOLDVA"] <- "Moldova"
+
+pta$ccode1 <- countrycode(pta$cty1name, "country.name", "cown")
+pta$ccode2 <- countrycode(pta$cty2name, "country.name", "cown")
+
+pta$dyad <- as.numeric(ifelse(pta$ccode1 < pta$ccode2, paste(pta$ccode1, pta$ccode2, sep = ""), paste(pta$ccode2, pta$ccode1, sep = "")))
+
+pta <- select(pta, year, dyad, regional, gattmbr1, gattmbr2, comlang, comcol, colony, curcol, custrict)
+
+colnames(pta) <- c("year","dyad", "fta", "gatt1", "gatt2", "comlang", "comcol", "colony", "curcol", "currencyu")
+
+tc <- left_join(tc, pta)
+
+rm(pta)
+
+#fill the colonial history and common language backwards, as they should be constant
+tc <- tc %>%
+  group_by(dyad) %>% 
+  mutate(comlang = na.locf(comlang, fromLast = T, na.rm = F), comcol = na.locf(comcol, fromLast = T, na.rm = F), colony = na.locf(colony, fromLast = T, na.rm = F))
+
+tc <- tc %>%
+  group_by(dyad) %>% 
+  mutate(comlang = na.locf(comlang, na.rm = F), comcol = na.locf(comcol, na.rm = F), colony = na.locf(colony, na.rm = F))
+
+tc$joint.gatt.any <- ifelse(tc$gatt1 != "out" & tc$gatt2 != "out", 1, 0)
+tc$joint.gatt.formal <- ifelse((tc$gatt1 == "wto" | tc$gatt1 == "art33" | tc$gatt1 == "art26:5") & (tc$gatt2 == "wto" | tc$gatt2 == "art33" | tc$gatt2 == "art26:5"), 1, 0)
+
+# 14. Write data ----
+write_csv(tc, "transfer_as_unit.csv")
